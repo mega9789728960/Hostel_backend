@@ -27,10 +27,16 @@ async function register_controller(req, res) {
     const { data: newUser, error: insertError } = await supabase
       .from("students")
       .insert([data])
-      .select(); // return inserted row
+      .select();
 
     if (insertError) {
-      // ⚠ Rollback Auth user if insert fails
+      // Handle duplicate key / unique constraint violation
+      if (insertError.code === "23505") { // PostgreSQL unique violation code
+        await supabase.auth.admin.deleteUser(signupData.user.id).catch(() => {});
+        return res.status(409).json({ success: false, error: "Student already exists" });
+      }
+
+      // Rollback Auth user for other insertion errors
       await supabase.auth.admin.deleteUser(signupData.user.id).catch(() => {});
       return res.status(400).json({ success: false, error: insertError.message });
     }
