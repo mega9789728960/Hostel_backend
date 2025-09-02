@@ -4,9 +4,16 @@ async function register_controller(req, res) {
   try {
     const data = req.body;
 
-    // Basic validation
-    if (!data.email || !data.password) {
-      return res.status(400).json({ success: false, error: "Email and password required" });
+    // Required fields
+    const requiredFields = ["email", "password", "registration_number", "roll_number", "name"];
+
+    // Check for missing or empty fields
+    const missingFields = requiredFields.filter(field => !data[field] || data[field].toString().trim() === "");
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Missing or empty required field(s): ${missingFields.join(", ")}`
+      });
     }
 
     console.log("email:", data.email, "password:", data.password);
@@ -14,7 +21,7 @@ async function register_controller(req, res) {
     // Sign up user in Supabase Auth
     const { data: signupData, error: signupError } = await supabase.auth.signUp({
       email: data.email,
-      password: data.password, // plain password, Supabase will hash it
+      password: data.password,
     });
 
     if (signupError) {
@@ -24,7 +31,7 @@ async function register_controller(req, res) {
     // Assign Supabase Auth user ID to student row
     data["user_id"] = signupData.user?.id;
 
-    // Add current timestamp for created_at and updated_at
+    // Add current timestamp
     const now = new Date().toISOString();
     data["created_at"] = now;
     data["updated_at"] = now;
@@ -39,33 +46,25 @@ async function register_controller(req, res) {
       // Rollback Auth user
       await supabase.auth.admin.deleteUser(signupData.user.id).catch(() => {});
 
-      // Handle different PostgreSQL errors
+      // Handle PostgreSQL errors
       switch (insertError.code) {
-        case "23505": // Unique violation
+        case "23505":
           return res.status(409).json({ success: false, error: "Student already exists" });
-
-        case "23502": // Not null violation
+        case "23502":
           return res.status(400).json({ success: false, error: `Missing required field: ${insertError.details}` });
-
-        case "23503": // Foreign key violation
+        case "23503":
           return res.status(400).json({ success: false, error: `Invalid foreign key value: ${insertError.details}` });
-
-        case "23514": // Check constraint violation
+        case "23514":
           return res.status(400).json({ success: false, error: `Check constraint failed: ${insertError.details}` });
-
-        case "23P01": // Exclusion constraint violation
+        case "23P01":
           return res.status(400).json({ success: false, error: "Conflicting entry due to exclusion constraint" });
-
-        case "22001": // String too long
+        case "22001":
           return res.status(400).json({ success: false, error: "Value too long for column" });
-
-        case "22P02": // Invalid input syntax
+        case "22P02":
           return res.status(400).json({ success: false, error: "Invalid input syntax for column" });
-
-        case "40P01": // Deadlock
+        case "40P01":
           return res.status(500).json({ success: false, error: "Deadlock detected, try again" });
-
-        default: // Other errors
+        default:
           return res.status(500).json({ success: false, error: insertError.message || "Database error" });
       }
     }
