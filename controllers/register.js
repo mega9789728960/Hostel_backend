@@ -24,6 +24,11 @@ async function register_controller(req, res) {
     // Assign Supabase Auth user ID to student row
     data["user_id"] = signupData.user?.id;
 
+    // Add current timestamp for created_at and updated_at
+    const now = new Date().toISOString();
+    data["created_at"] = now;
+    data["updated_at"] = now;
+
     // Insert into students table
     const { data: newUser, error: insertError } = await supabase
       .from("students")
